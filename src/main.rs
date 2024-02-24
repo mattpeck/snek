@@ -1,17 +1,49 @@
 extern crate sdl2;
 
+use rand::Rng;
 use sdl2::{event::Event, keyboard::Keycode, pixels::Color, rect::Rect, render::Canvas, video::Window};
-use std::time::Duration;
+use std::{collections::VecDeque, time::{Duration, Instant}};
 
 const GRID_WIDTH: u32 = 50;
 const GRID_HEIGHT: u32 = 50;
 const POINT_SIZE: u32 = 10;
 
+#[derive(PartialEq)]
 struct Point {
     x: u32,
     y: u32,
 }
 
+struct Apple {
+    position: Point,
+}
+
+impl Apple {
+    fn new(snek: &Snek) -> Self {
+        Self {
+            position: Self::random_point(snek),
+        }
+    }
+
+    fn random_point(snek: &Snek) -> Point {
+        loop {
+            let random_point = Point{
+                x: rand::thread_rng().gen_range(0..GRID_WIDTH),
+                y: rand::thread_rng().gen_range(0..GRID_HEIGHT),
+            };
+
+            if !snek.position.iter().any(|p| *p == random_point) {
+                return random_point;
+            }
+        }
+    }
+
+    fn update_position(&mut self, snek: &Snek) {
+        self.position = Self::random_point(snek);
+    }
+}
+
+#[derive(PartialEq)]
 enum Direction {
     LEFT,
     RIGHT,
@@ -20,49 +52,54 @@ enum Direction {
 }
 
 struct Snek {
-    position: Vec<Point>,
-    direction: Option<Direction>,
+    position: VecDeque<Point>,
+    direction: Direction,
 }
 
 impl Snek {
-    fn new(position: Vec<Point>) -> Self {
+    fn new(position: VecDeque<Point>) -> Self {
         Self {
             position,
-            direction: None
+            direction: Direction::RIGHT,
         }
     }
 
     fn move_left(&mut self) {
-        self.direction = Some(Direction::LEFT);
+        if self.direction != Direction::RIGHT {
+            self.direction = Direction::LEFT;
+        }
     }
 
     fn move_right(&mut self) {
-        self.direction = Some(Direction::RIGHT);
+        if self.direction != Direction::LEFT {
+            self.direction = Direction::RIGHT;
+        }
     }
 
     fn move_up(&mut self) {
-        self.direction = Some(Direction::UP);
+        if self.direction != Direction::DOWN {
+            self.direction = Direction::UP;
+        }
     }
 
     fn move_down(&mut self) {
-        self.direction = Some(Direction::DOWN);
+        if self.direction != Direction::UP {
+            self.direction = Direction::DOWN;
+        }
     }
 
     fn update(&mut self) {
-
-        let head = self.position.first().unwrap();
+        let head = self.position.front().unwrap();
         let updated_head = match self.direction {
-            Some(Direction::LEFT) => Point{x: head.x - 1, y: head.y},
-            Some(Direction::RIGHT) => Point{x: head.x + 1, y: head.y},
-            Some(Direction::UP) => Point{x: head.x, y: head.y - 1},
-            Some(Direction::DOWN) => Point{x: head.x, y: head.y + 1},
-            _ => Point{x: head.x, y: head.y},
+            Direction::LEFT => Point{x: head.x - 1, y: head.y},
+            Direction::RIGHT => Point{x: head.x + 1, y: head.y},
+            Direction::UP => Point{x: head.x, y: head.y - 1},
+            Direction::DOWN => Point{x: head.x, y: head.y + 1},
         };
 
-        self.position.pop();
-        self.position.reverse();
-        self.position.push(updated_head);
-        self.position.reverse();
+        self.position.push_front(updated_head);
+        self.position.pop_back();
+
     }
 }
 
@@ -86,8 +123,8 @@ impl Renderer {
     fn draw_point(&mut self, point: &Point, color: Color) -> Result<(), String>{
         self.canvas.set_draw_color(color);
         self.canvas.fill_rect(Rect::new(
-            (point.x * POINT_SIZE / 2) as i32,
-            (point.y * POINT_SIZE / 2) as i32,
+            (point.x * POINT_SIZE) as i32,
+            (point.y * POINT_SIZE) as i32,
             POINT_SIZE,
             POINT_SIZE,
         ))?;
@@ -95,17 +132,20 @@ impl Renderer {
         Ok(())
     }
 
-    fn draw(&mut self, snek: &Snek) {
+    fn draw(&mut self, snek: &Snek, apple: &Apple) {
         self.init_canvas();
+
         for p in &snek.position {
             self.draw_point(&p, Color::GREEN);
         }
+
+        self.draw_point(&apple.position, Color::RED);
 
         self.canvas.present();
     }
 }
 
-fn main() -> Result<(), String>{
+fn main() -> Result<(), String> {
     let sdl_context = sdl2::init()?;
     let video_subsystem = sdl_context.video()?;
 
@@ -121,17 +161,20 @@ fn main() -> Result<(), String>{
     let mut renderer = Renderer::new(canvas);
     renderer.init_canvas();
 
-    let mut snek = Snek::new(vec![
-        Point{x: 5, y: 1},
-        Point{x: 4, y: 1},
-        Point{x: 3, y: 1},
-        Point{x: 2, y: 1},
-        Point{x: 1, y: 1},
-    ]);
+    let mut snek = Snek::new(VecDeque::new());
+
+    let start_snek_x = GRID_WIDTH / 3;
+    let start_snek_y = GRID_HEIGHT / 2;
+    for i in 0..3 {
+        snek.position.push_back(Point{x: start_snek_x + i, y: start_snek_y})
+    }
+
+    let apple = Apple::new(&snek);
 
     let mut event_pump = sdl_context.event_pump()?;
 
     'running: loop {
+        let start_time = Instant::now();
         for event in event_pump.poll_iter() {
             match event {
                 Event::Quit { .. } => break 'running,
@@ -141,6 +184,7 @@ fn main() -> Result<(), String>{
                         Keycode::Right => snek.move_right(),
                         Keycode::Up => snek.move_up(),
                         Keycode::Down => snek.move_down(),
+                        Keycode::Escape => break 'running,
                         _ => {}
                     }
                 },
@@ -150,9 +194,9 @@ fn main() -> Result<(), String>{
 
         snek.update();
 
-        renderer.draw(&snek);
+        renderer.draw(&snek, &apple);
 
-        ::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 30));
+        ::std::thread::sleep(Duration::from_nanos(1_000_000_000u64 / 10) - start_time.elapsed());
     }
     Ok(())
 }
