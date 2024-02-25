@@ -6,7 +6,7 @@ use std::{collections::VecDeque, time::{Duration, Instant}};
 
 const GRID_WIDTH: u32 = 50;
 const GRID_HEIGHT: u32 = 50;
-const POINT_SIZE: u32 = 10;
+const POINT_SIZE: u32 = 20;
 
 #[derive(PartialEq)]
 struct Point {
@@ -88,7 +88,7 @@ impl Snek {
         }
     }
 
-    fn update(&mut self) {
+    fn update(&mut self, is_growing: bool) {
         let head = self.position.front().unwrap();
         let updated_head = match self.direction {
             Direction::LEFT => Point{x: head.x - 1, y: head.y},
@@ -98,7 +98,10 @@ impl Snek {
         };
 
         self.position.push_front(updated_head);
-        self.position.pop_back();
+
+        if !is_growing {
+            self.position.pop_back();
+        }
 
     }
 }
@@ -135,14 +138,18 @@ impl Renderer {
     fn draw(&mut self, snek: &Snek, apple: &Apple) {
         self.init_canvas();
 
+        self.draw_point(&apple.position, Color::RED);
+
         for p in &snek.position {
             self.draw_point(&p, Color::GREEN);
         }
 
-        self.draw_point(&apple.position, Color::RED);
-
         self.canvas.present();
     }
+}
+
+fn is_collision(point: &Point, point_list: &VecDeque<Point>) -> bool {
+    point_list.iter().any(|p| *p == *point)
 }
 
 fn main() -> Result<(), String> {
@@ -169,7 +176,7 @@ fn main() -> Result<(), String> {
         snek.position.push_back(Point{x: start_snek_x + i, y: start_snek_y})
     }
 
-    let apple = Apple::new(&snek);
+    let mut apple = Apple::new(&snek);
 
     let mut event_pump = sdl_context.event_pump()?;
 
@@ -192,7 +199,12 @@ fn main() -> Result<(), String> {
             }
         }
 
-        snek.update();
+        if is_collision(&apple.position, &snek.position) {
+            apple.update_position(&snek);
+            snek.update(true);
+        } else {
+            snek.update(false);
+        }
 
         renderer.draw(&snek, &apple);
 
