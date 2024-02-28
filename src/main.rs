@@ -9,6 +9,13 @@ const GRID_HEIGHT: u32 = 50;
 const POINT_SIZE: u32 = 20;
 
 #[derive(PartialEq)]
+enum GameState {
+    Running,
+    Paused,
+    GameOver,
+}
+
+#[derive(PartialEq)]
 struct Point {
     x: u32,
     y: u32,
@@ -45,10 +52,10 @@ impl Apple {
 
 #[derive(PartialEq)]
 enum Direction {
-    LEFT,
-    RIGHT,
-    UP,
-    DOWN,
+    Left,
+    Right,
+    Up,
+    Down,
 }
 
 struct Snek {
@@ -60,41 +67,41 @@ impl Snek {
     fn new(position: VecDeque<Point>) -> Self {
         Self {
             position,
-            direction: Direction::RIGHT,
+            direction: Direction::Right,
         }
     }
 
     fn move_left(&mut self) {
-        if self.direction != Direction::RIGHT {
-            self.direction = Direction::LEFT;
+        if self.direction != Direction::Right {
+            self.direction = Direction::Left;
         }
     }
 
     fn move_right(&mut self) {
-        if self.direction != Direction::LEFT {
-            self.direction = Direction::RIGHT;
+        if self.direction != Direction::Left {
+            self.direction = Direction::Right;
         }
     }
 
     fn move_up(&mut self) {
-        if self.direction != Direction::DOWN {
-            self.direction = Direction::UP;
+        if self.direction != Direction::Down {
+            self.direction = Direction::Up;
         }
     }
 
     fn move_down(&mut self) {
-        if self.direction != Direction::UP {
-            self.direction = Direction::DOWN;
+        if self.direction != Direction::Up {
+            self.direction = Direction::Down;
         }
     }
 
     fn update(&mut self, is_growing: bool) {
         let head = self.position.front().unwrap();
         let updated_head = match self.direction {
-            Direction::LEFT => Point{x: head.x - 1, y: head.y},
-            Direction::RIGHT => Point{x: head.x + 1, y: head.y},
-            Direction::UP => Point{x: head.x, y: head.y - 1},
-            Direction::DOWN => Point{x: head.x, y: head.y + 1},
+            Direction::Left => Point{x: head.x - 1, y: head.y},
+            Direction::Right => Point{x: head.x + 1, y: head.y},
+            Direction::Up => Point{x: head.x, y: head.y - 1},
+            Direction::Down => Point{x: head.x, y: head.y + 1},
         };
 
         self.position.push_front(updated_head);
@@ -148,8 +155,13 @@ impl Renderer {
     }
 }
 
-fn is_collision(point: &Point, point_list: &VecDeque<Point>) -> bool {
-    point_list.iter().any(|p| *p == *point)
+fn is_apple_collision(snek: &Snek, apple: &Apple) -> bool {
+    apple.position == *snek.position.front().unwrap()
+}
+
+fn is_snek_collision(snek: &Snek) -> bool {
+    let head = snek.position.front().unwrap();
+    snek.position.iter().skip(1).any(|p| *p == *head)
 }
 
 fn main() -> Result<(), String> {
@@ -173,10 +185,12 @@ fn main() -> Result<(), String> {
     let start_snek_x = GRID_WIDTH / 3;
     let start_snek_y = GRID_HEIGHT / 2;
     for i in 0..3 {
-        snek.position.push_back(Point{x: start_snek_x + i, y: start_snek_y})
+        snek.position.push_back(Point{x: start_snek_x - i, y: start_snek_y})
     }
 
     let mut apple = Apple::new(&snek);
+
+    let mut game_state = GameState::Running;
 
     let mut event_pump = sdl_context.event_pump()?;
 
@@ -191,7 +205,13 @@ fn main() -> Result<(), String> {
                         Keycode::Right => snek.move_right(),
                         Keycode::Up => snek.move_up(),
                         Keycode::Down => snek.move_down(),
-                        Keycode::Escape => break 'running,
+                        Keycode::Escape => {
+                            if game_state == GameState::Running {
+                                game_state = GameState::Paused;
+                            } else {
+                                game_state = GameState::Running;
+                            }
+                        },
                         _ => {}
                     }
                 },
@@ -199,11 +219,19 @@ fn main() -> Result<(), String> {
             }
         }
 
-        if is_collision(&apple.position, &snek.position) {
-            apple.update_position(&snek);
-            snek.update(true);
-        } else {
-            snek.update(false);
+        if game_state == GameState::Running {
+            // snek collision
+            if is_snek_collision(&snek) {
+                game_state = GameState::GameOver;
+            }
+
+            // apple collision
+            if is_apple_collision(&snek, &apple) {
+                apple.update_position(&snek);
+                snek.update(true);
+            } else {
+                snek.update(false);
+            }
         }
 
         renderer.draw(&snek, &apple);
