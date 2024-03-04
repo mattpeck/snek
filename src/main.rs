@@ -6,6 +6,10 @@ use std::{collections::VecDeque, time::{Duration, Instant}};
 
 const GRID_WIDTH: u32 = 50;
 const GRID_HEIGHT: u32 = 50;
+const BORDER_START_X: u32 = 4;
+const BORDER_END_X: u32 = GRID_WIDTH - 4;
+const BORDER_START_Y: u32 = 4;
+const BORDER_END_Y: u32 = GRID_HEIGHT - 4;
 const POINT_SIZE: u32 = 20;
 
 #[derive(PartialEq)]
@@ -35,8 +39,8 @@ impl Apple {
     fn random_point(snek: &Snek) -> Point {
         loop {
             let random_point = Point{
-                x: rand::thread_rng().gen_range(0..GRID_WIDTH),
-                y: rand::thread_rng().gen_range(0..GRID_HEIGHT),
+                x: rand::thread_rng().gen_range((BORDER_START_X + 1)..BORDER_END_X),
+                y: rand::thread_rng().gen_range((BORDER_START_Y + 1)..BORDER_END_Y),
             };
 
             if !snek.position.iter().any(|p| *p == random_point) {
@@ -142,13 +146,17 @@ impl Renderer {
         Ok(())
     }
 
-    fn draw(&mut self, snek: &Snek, apple: &Apple) {
+    fn draw(&mut self, snek: &Snek, apple: &Apple, border: &VecDeque<Point>) {
         self.init_canvas();
 
         self.draw_point(&apple.position, Color::RED);
 
         for p in &snek.position {
             self.draw_point(&p, Color::GREEN);
+        }
+
+        for p in border {
+            self.draw_point(&p, Color::WHITE);
         }
 
         self.canvas.present();
@@ -162,6 +170,12 @@ fn is_apple_collision(snek: &Snek, apple: &Apple) -> bool {
 fn is_snek_collision(snek: &Snek) -> bool {
     let head = snek.position.front().unwrap();
     snek.position.iter().skip(1).any(|p| *p == *head)
+}
+
+fn is_border_collision(snek: &Snek) -> bool {
+    let head = snek.position.front().unwrap();
+    head.x <= BORDER_START_X || head.x >= BORDER_END_X ||
+        head.y <= BORDER_START_Y || head.y >= BORDER_END_Y
 }
 
 fn main() -> Result<(), String> {
@@ -179,6 +193,19 @@ fn main() -> Result<(), String> {
 
     let mut renderer = Renderer::new(canvas);
     renderer.init_canvas();
+
+    let mut border = VecDeque::new();
+
+    for x in BORDER_START_X..=BORDER_END_X {
+        border.push_back(Point{x: x, y: BORDER_START_Y});
+        border.push_back(Point{x: x, y: BORDER_END_Y});
+    }
+
+    for y in BORDER_START_Y..=BORDER_END_Y {
+        border.push_back(Point{x: BORDER_START_X, y: y});
+        border.push_back(Point{x: BORDER_END_X, y: y});
+    }
+    border.push_back(Point{x: GRID_WIDTH - 4, y: GRID_HEIGHT - 4});
 
     let mut snek = Snek::new(VecDeque::new());
 
@@ -220,13 +247,9 @@ fn main() -> Result<(), String> {
         }
 
         if game_state == GameState::Running {
-            // snek collision
-            if is_snek_collision(&snek) {
+            if is_border_collision(&snek) || is_snek_collision(&snek) {
                 game_state = GameState::GameOver;
-            }
-
-            // apple collision
-            if is_apple_collision(&snek, &apple) {
+            } else if is_apple_collision(&snek, &apple){
                 apple.update_position(&snek);
                 snek.update(true);
             } else {
@@ -234,7 +257,7 @@ fn main() -> Result<(), String> {
             }
         }
 
-        renderer.draw(&snek, &apple);
+        renderer.draw(&snek, &apple, &border);
 
         ::std::thread::sleep(Duration::from_nanos(1_000_000_000u64 / 10) - start_time.elapsed());
     }
