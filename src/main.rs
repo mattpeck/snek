@@ -5,8 +5,9 @@ mod entities;
 mod graphics;
 mod physics;
 
+use config::TICK;
 use sdl2::{event::Event, keyboard::Keycode};
-use std::{collections::VecDeque, time::{Duration, Instant}};
+use std::{collections::VecDeque, time::{Duration, Instant}, env};
 use crate::config::{BORDER_END_X, BORDER_END_Y, BORDER_START_X, BORDER_START_Y, GRID_WIDTH, GRID_HEIGHT, POINT_SIZE};
 use crate::entities::{Apple, Snek, Point};
 use crate::graphics::Renderer;
@@ -100,7 +101,10 @@ fn main() -> Result<(), String> {
 
         renderer.draw(&snek, &apple, &border);
 
-        ::std::thread::sleep(Duration::from_nanos(1_000_000_000u64 / 10) - start_time.elapsed());
+        let elapsed_time = start_time.elapsed();
+        if TICK > elapsed_time {
+            ::std::thread::sleep(TICK - elapsed_time);
+        }
     }
     Ok(())
 }
